@@ -8,3 +8,6 @@
     - Have a test blockchain that we can call?
   - Get Balance
   - Withdraw 
+
+N.B. 
+The fundme-anvil.json file represents a faked blockchain state at block number 2

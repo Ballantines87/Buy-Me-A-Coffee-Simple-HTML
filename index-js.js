@@ -5,6 +5,7 @@ import {
   custom,
   parseEther,
   defineChain,
+  formatEther,
 } from "https://esm.sh/viem";
 
 // We're also importing a public client to READ data from the blockchain or SIMULATE transactions
@@ -18,6 +19,8 @@ import { abi } from "./constants-js.js";
 
 const connectButton = document.getElementById("connectButton");
 const fundButton = document.getElementById("fundButton");
+const getBalanceButton = document.getElementById("getBalanceButton");
+
 let ethAmountInput = document.getElementById("ethAmount");
 
 let walletClient;
@@ -40,39 +43,73 @@ async function connect() {
 
 async function fund() {
   // gets the ETH amount from the input field
-  ethAmountInput = ethAmountInput.value;
+  const ethAmount = ethAmountInput.value;
   console.log(`Funding with ${ethAmountInput} ETH...`);
 
   // this in case we haven't connected yet
   if (typeof window.ethereum !== "undefined") {
-    walletClient = createWalletClient({
-      // the transport (aka the blockchain node) we're gonna connect to is inside of the window.ethereum (MetaMask)
-      transport: custom(window.ethereum),
-    });
+    try {
+      walletClient = createWalletClient({
+        // the transport (aka the blockchain node) we're gonna connect to is inside of the window.ethereum (MetaMask)
+        transport: custom(window.ethereum),
+      });
 
-    // this returns a list of addresses connected to MetaMask
-    const [connectedAccount] = await walletClient.requestAddresses(); // the [] brackets is a way to say: "okay, the 1st item in the list we're gonna call 'connectedAccount'"
+      // this returns a list of addresses connected to MetaMask
+      const [connectedAccount] = await walletClient.requestAddresses(); // the [] brackets is a way to say: "okay, the 1st item in the list we're gonna call 'connectedAccount'"
 
-    const currentChain = await getCurrentChain(walletClient);
+      const currentChain = await getCurrentChain(walletClient);
 
-    publicClient = createPublicClient({
-      transport: custom(window.ethereum),
-    });
+      console.log("Processing transaction...");
+      publicClient = createPublicClient({
+        transport: custom(window.ethereum),
+      });
 
-    // there's a function called simulateContract, whihch simulates/validates a contract interaction -> it's useful for retrieving return data and revert reasons of contract write functions.
-    // This function does not require gas to execute and does not change the state of the blockchain
-    // so, basically, we're gonna i) simulate funding the contract with ETH and ii) then, if the simulation passes, we can actually call the fund() function ourselves.
+      // there's a function called simulateContract, whihch simulates/validates a contract interaction -> it's useful for retrieving return data and revert reasons of contract write functions.
+      // This function does not require gas to execute and does not change the state of the blockchain
+      // so, basically, we're gonna i) simulate funding the contract with ETH and ii) then, if the simulation passes, we can actually call the fund() function ourselves.
 
-    await publicClient.simulateContract({
-      address: contractAddress, // the address of the contract we want to interact with
-      abi: abi, // the ABI of the contract we want to interact with
-      functionName: "fund", // the actual function we wanna call
-      account: connectedAccount, // the user's wallet address
-      chain: currentChain, // unfortunately we have to custom specify the chain here -> so check the async function getCurrentChain(client) below
-      value: parseEther(ethAmountInput), // the amount of ETH to send (converted to wei)
-    });
+      const { request } = await publicClient.simulateContract({
+        address: contractAddress, // the address of the contract we want to interact with
+        abi: abi, // the ABI of the contract we want to interact with
+        functionName: "fund", // the actual function we wanna call
+        account: connectedAccount, // the user's wallet address
+        chain: currentChain, // unfortunately we have to custom specify the chain here -> so check the async function getCurrentChain(client) below
+        value: parseEther(ethAmount), // the amount of ETH to send (converted to wei)
+      });
+      const hash = await walletClient.writeContract(request);
+      console.log("Transaction processed: ", hash);
+    } catch (error) {
+      console.log("Error: ", error);
+    }
   } else {
-    connectButton.innerText = "Please install MetaMask!";
+    connectButton.innerHTML = "Please install MetaMask!";
+  }
+}
+
+async function getContractBalance() {
+  // this in case we haven't connected yet
+  if (typeof window.ethereum !== "undefined") {
+    try {
+      publicClient = createPublicClient({
+        // the transport (aka the blockchain node) we're gonna connect to is inside of the window.ethereum (MetaMask)
+        transport: custom(window.ethereum),
+      });
+
+      const currentChain = await getCurrentChain(publicClient);
+      const balance = await publicClient.getBalance({
+        address: contractAddress,
+        chain: currentChain,
+      });
+      console.log(`Contract balance: ${formatEther(balance)} ETH`);
+
+      // there's a function called simulateContract, whihch simulates/validates a contract interaction -> it's useful for retrieving return data and revert reasons of contract write functions.
+      // This function does not require gas to execute and does not change the state of the blockchain
+      // so, basically, we're gonna i) simulate funding the contract with ETH and ii) then, if the simulation passes, we can actually call the fund() function ourselves.
+    } catch (error) {
+      console.log("Error: ", error);
+    }
+  } else {
+    connectButton.innerHTML = "Please install MetaMask!";
   }
 }
 
@@ -80,6 +117,7 @@ async function getCurrentChain(client) {
   const chainId = await client.getChainId();
 
   // n.b. since we're only working with Anvil, we're going to define this Anvil custom chain - kind of annoying having to do this ... but you'll see later on that we don't have to do this
+
   const currentChain = defineChain({
     id: chainId,
     name: "Custom Chain",
@@ -99,3 +137,4 @@ async function getCurrentChain(client) {
 
 connectButton.onclick = connect;
 fundButton.onclick = fund;
+getBalanceButton.onclick = getContractBalance;
