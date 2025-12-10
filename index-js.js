@@ -20,6 +20,7 @@ import { abi } from "./constants-js.js";
 const connectButton = document.getElementById("connectButton");
 const fundButton = document.getElementById("fundButton");
 const getBalanceButton = document.getElementById("getBalanceButton");
+const withdrawButton = document.getElementById("withdrawButton");
 
 let ethAmountInput = document.getElementById("ethAmount");
 
@@ -44,7 +45,7 @@ async function connect() {
 async function fund() {
   // gets the ETH amount from the input field
   const ethAmount = ethAmountInput.value;
-  console.log(`Funding with ${ethAmountInput} ETH...`);
+  console.log(`Funding with ${ethAmount} ETH...`);
 
   // this in case we haven't connected yet
   if (typeof window.ethereum !== "undefined") {
@@ -113,6 +114,58 @@ async function getContractBalance() {
   }
 }
 
+async function withdraw() {
+  if (typeof window.ethereum === "undefined") {
+    connectButton.innerHTML = "Please install MetaMask!";
+    return;
+  }
+
+  if (getContractBalance() === 0) {
+    console.log("Contract balance is 0, cannot withdraw.");
+    return;
+  }
+
+  try {
+    const ethAmount = ethAmountInput.value;
+    console.log(`Withdrawing ${ethAmount} ETH...`);
+
+    walletClient = createWalletClient({
+      transport: custom(window.ethereum),
+    });
+
+    const [connectedAccount] = await walletClient.requestAddresses();
+    const currentChain = await getCurrentChain(walletClient);
+
+    publicClient = createPublicClient({
+      transport: custom(window.ethereum),
+    });
+
+    const { request } = await publicClient.simulateContract({
+      address: contractAddress, // the address of the contract we want to interact with
+      abi: abi, // the ABI of the contract we want to interact with
+      functionName: "withdraw", // the actual function we wanna call
+      account: connectedAccount, // the user's wallet address
+      chain: currentChain, // unfortunately we have to custom specify the chain here -> so check the async function getCurrentChain(client) below
+    });
+
+    const hash = await walletClient.writeContract(request);
+    console.log("Transaction processed: ", hash);
+    console.log("Withdrawal successful!");
+    const contractBalance = await publicClient.getBalance({
+      address: contractAddress,
+      chain: currentChain,
+    });
+    const userBalance = await publicClient.getBalance({
+      address: connectedAccount,
+      chain: currentChain,
+    });
+    console.log("New contract balance: ", formatEther(contractBalance));
+    console.log("New wallet balance: ", formatEther(userBalance));
+  } catch (error) {
+    console.log("Error: ", error);
+  }
+}
+
 async function getCurrentChain(client) {
   const chainId = await client.getChainId();
 
@@ -138,3 +191,4 @@ async function getCurrentChain(client) {
 connectButton.onclick = connect;
 fundButton.onclick = fund;
 getBalanceButton.onclick = getContractBalance;
+withdrawButton.onclick = withdraw;
