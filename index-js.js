@@ -21,6 +21,7 @@ const connectButton = document.getElementById("connectButton");
 const fundButton = document.getElementById("fundButton");
 const getBalanceButton = document.getElementById("getBalanceButton");
 const withdrawButton = document.getElementById("withdrawButton");
+const amountFundedButton = document.getElementById("amountFundedButton");
 
 let ethAmountInput = document.getElementById("ethAmount");
 
@@ -188,7 +189,45 @@ async function getCurrentChain(client) {
   return currentChain;
 }
 
+async function getAmountFunded(address) {
+  if (typeof window.ethereum !== "undefined") {
+    try {
+      publicClient = createPublicClient({
+        // the transport (aka the blockchain node) we're gonna connect to is inside of the window.ethereum (MetaMask)
+        transport: custom(window.ethereum),
+      });
+
+      const [connectedAccount] = await walletClient.requestAddresses();
+      const currentChain = await getCurrentChain(walletClient);
+
+      const { request } = await publicClient.simulateContract({
+        address: contractAddress, // the address of the contract we want to interact with
+        abi: abi, // the ABI of the contract we want to interact with
+        functionName: "getAddressToAmountFunded", // the actual function we wanna call
+        chain: currentChain, // unfortunately we have to custom specify the chain here -> so check the async function getCurrentChain(client) below
+        args: [connectedAccount],
+      });
+
+      const amountFunded = await publicClient.readContract(request);
+      console.log(
+        `Amount Funded by address ${connectedAccount}: ${formatEther(
+          amountFunded
+        )} ETH`
+      );
+
+      // there's a function called simulateContract, whihch simulates/validates a contract interaction -> it's useful for retrieving return data and revert reasons of contract write functions.
+      // This function does not require gas to execute and does not change the state of the blockchain
+      // so, basically, we're gonna i) simulate funding the contract with ETH and ii) then, if the simulation passes, we can actually call the fund() function ourselves.
+    } catch (error) {
+      console.log("Error: ", error);
+    }
+  } else {
+    connectButton.innerHTML = "Please install MetaMask!";
+  }
+}
+
 connectButton.onclick = connect;
 fundButton.onclick = fund;
 getBalanceButton.onclick = getContractBalance;
 withdrawButton.onclick = withdraw;
+amountFundedButton.onclick = getAmountFunded;
